@@ -262,6 +262,31 @@ systemd 유닛도 내용이 바뀌었을 때만 갱신합니다. KST 시각은 �
 | 감시가 도는지 모르겠음 | 로그의 최근 실행 시각, `state/state.json`의 `updated_at`, 실제 알림 도착까지 함께 확인. "코드 내용"이 아니라 "실행 경로"를 검증하세요. |
 | 조회가 연속 실패 | 5회 연속 실패 시 텔레그램으로 1회 경고가 갑니다. 조용히 죽은 감시기는 없느니만 못하므로. |
 
+## 깔끔하게 지우기
+
+설치가 만든 것은 ① 설치 폴더 ② (서버라면) systemd 서비스 ③ Playwright 브라우저
+캐시, 이 세 가지가 전부입니다. 시스템 패키지(git 등)는 공유 자원이라 남깁니다.
+
+```bash
+bash deploy/uninstall.sh    # 하나씩 확인하며 제거 (서버/로컬 공용)
+```
+
+수동으로 지우려면:
+
+```bash
+# 서버: systemd 서비스
+sudo systemctl disable --now cgv-watcher
+sudo rm /etc/systemd/system/cgv-watcher.service && sudo systemctl daemon-reload
+
+# 공통: 설치 폴더 (토큰이 든 config.yaml 포함 전부 삭제됨)
+rm -rf ~/cgv_watcher
+
+# 공통: Playwright 브라우저 캐시 — 다른 프로그램이 Playwright를 안 쓸 때만
+rm -rf ~/.cache/ms-playwright          # Windows: %USERPROFILE%\AppData\Local\ms-playwright
+```
+
+텔레그램 봇 자체를 없애려면 @BotFather에서 `/deletebot`.
+
 ## 주의
 
 - 알림 전용입니다. **자동 예매·좌석 선점 기능은 없고, 넣지 마세요.** 매크로 예매는
