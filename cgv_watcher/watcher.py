@@ -35,10 +35,14 @@ def run_once(cfg: Config, client: CgvClient | None = None, dry_run: bool = False
 
     matched_keys: set[str] = set()
     changes: list[Change] = []
+    allowed_dates = set(cfg.target.dates())
 
     for date in cfg.target.dates():
         shows = client.fetch_showtimes(date)
-        targets = [s for s in shows if match_showtime(s, cfg.target)]
+        # 응답에 다른 날짜 회차가 섞여 들어와도(오캡처 등) 감시 범위만 취급
+        targets = [
+            s for s in shows if s.date in allowed_dates and match_showtime(s, cfg.target)
+        ]
         log.info("%s: 조건에 맞는 회차 %d/%d", date, len(targets), len(shows))
 
         for st in targets:
@@ -58,7 +62,21 @@ def run_once(cfg: Config, client: CgvClient | None = None, dry_run: bool = False
 
     to_alert = [c for c in changes if should_alert(c, cfg.alert)]
     if to_alert:
-        msg = build_alert_message(to_alert, _title_prefix(cfg))
+        # 알림에서 바로 예매 페이지로 갈 수 있게 링크 첨부 (첫 알림 회차의 날짜)
+        booking_url = ""
+        ep = cfg.endpoints.get("showtimes")
+        if ep is not None and ep.page_url:
+            d = to_alert[0].showtime.date
+            try:
+                booking_url = ep.page_url.format(
+                    theater_code=cfg.target.theater_code,
+                    theater_name=cfg.target.theater_name,
+                    date=d,
+                    date_dash=f"{d[:4]}-{d[4:6]}-{d[6:8]}" if len(d) == 8 else d,
+                )
+            except (KeyError, IndexError):  # 알 수 없는 플레이스홀더면 링크 생략
+                booking_url = ""
+        msg = build_alert_message(to_alert, _title_prefix(cfg), booking_url)
         if dry_run:
             log.info("[dry-run] 알림 생략:\n%s", msg)
         else:

@@ -104,6 +104,8 @@ _K_REMAIN = [r"(rest|remain|able|fr).*(seat|cnt)", r"seat.*(rest|remain|able|cnt
 _K_TOTAL = [r"(tot|all|cp).*seat", r"seat.*tot"]
 _K_SCN_ID = [r"(scn|screening|play).*(no|id|num|sseq)", r"time.*table.*no"]
 _K_SCREEN_CD = [r"(scr|screen).*(cd|code)"]
+# CGV tcscnsGradCd (IMAX='03'). 관람등급 필드와 혼동하지 않게 구체적 패턴 우선
+_K_GRADE = [r"tcscns.*grad", r"scns.*grad.*cd", r"grad.*cd"]
 
 
 def _looks_like_showtime(item: dict) -> bool:
@@ -126,6 +128,7 @@ def _showtime_from_item(item: dict, date_hint: str) -> Showtime:
         start_time=norm_time(g(_K_START) or ""),
         movie=str(g(_K_MOVIE) or "").strip(),
         hall=str(g(_K_HALL) or "").strip(),
+        grade=str(g(_K_GRADE) or "").strip(),
         screening_id=str(g(_K_SCN_ID) or "").strip(),
         remaining=remaining,
         total=total,
@@ -170,6 +173,7 @@ def extract_showtimes_mapped(
                 start_time=norm_time(item.get(fields.get("start_time", ""), "")),
                 movie=str(item.get(fields.get("movie", ""), "") or "").strip(),
                 hall=str(item.get(fields.get("hall", ""), "") or "").strip(),
+                grade=str(item.get(fields.get("grade", ""), "") or "").strip(),
                 screening_id=str(item.get(fields.get("screening_id", ""), "") or "").strip(),
                 remaining=_to_int(item.get(fields.get("remaining", ""))),
                 total=_to_int(item.get(fields.get("total", ""))),

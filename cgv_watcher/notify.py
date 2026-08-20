@@ -23,7 +23,9 @@ def _fmt_date(yyyymmdd: str) -> str:
         return yyyymmdd
 
 
-def build_alert_message(changes: list[Change], title_prefix: str) -> str:
+def build_alert_message(
+    changes: list[Change], title_prefix: str, booking_url: str = ""
+) -> str:
     """블로그의 최종 메시지 포맷을 따른다.
 
     CGV 대구 IMAX '오디세이' 빈자리 증가
@@ -65,6 +67,9 @@ def build_alert_message(changes: list[Change], title_prefix: str) -> str:
                 f"- {_fmt_date(c.showtime.date)} {c.showtime.start_time}"
                 f" [{c.showtime.hall}]{seat_info}"
             )
+    if booking_url:
+        lines.append("")
+        lines.append(f"예매: {booking_url}")
     return "\n".join(lines)
 
 

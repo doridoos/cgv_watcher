@@ -16,6 +16,7 @@ class Showtime:
     movie: str = ""
     hall: str = ""  # 상영관 이름 (예: "IMAX관", "IMAX LASER")
     theater: str = ""  # 극장 이름 (예: "대구")
+    grade: str = ""  # 상영등급코드 (CGV tcscnsGradCd: IMAX='03' 등)
     screening_id: str = ""  # 회차 식별자 (좌석 조회에 필요)
     remaining: Optional[int] = None  # 예매 가능 좌석 수
     total: Optional[int] = None  # 전체 좌석 수

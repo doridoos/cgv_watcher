@@ -32,12 +32,18 @@ CGV 특정 극장·영화·상영관(IMAX 등)의 **취소표(빈자리 증가)*
 (browser/api)  (영화·관·시간창)  (state.json)     (A~C열 등)  (Telegram)
 ```
 
-- **browser 모드(기본)** — CGV 새 사이트는 Cloudflare 뒤에 있어 API를 직접 부르면
-  403이 나기 쉽습니다(원문 블로그의 첫 403이 바로 이것). 그래서 Playwright 헤드리스
-  브라우저로 실제 예매 페이지를 열고, 페이지가 스스로 호출하는 상영시간표
-  API(`searchMovScnInfo`) 응답을 가로챕니다. 로그인 불필요.
-- **api 모드** — 요청 한 번이면 되는 가벼운 방식. browser 모드 실행 시
-  `state/discovered.json`에 남는 실제 API 주소를 config에 옮기면 전환할 수 있습니다.
+- **browser 모드(기본, 하이브리드)** — CGV 새 사이트는 Cloudflare 뒤에 있어 API를
+  직접 부르면 403이 나기 쉽습니다(원문 블로그의 첫 403이 바로 이것). 그래서:
+  1. Playwright 헤드리스 브라우저로 실제 예매 페이지를 열고, 페이지가 스스로
+     호출하는 상영시간표 API(`searchMovScnInfo`)의 **실제 URL + 헤더(Cloudflare
+     쿠키 포함)** 를 캡처해 `state/session.json`에 저장합니다. 로그인 불필요.
+  2. 이후 폴링은 그 세션으로 **가벼운 직접 HTTP 요청**만 합니다 (브라우저 안 띄움).
+  3. 세션 만료(기본 20분 — `__cf_bm` 쿠키 수명)나 요청 실패 시에만 브라우저로
+     재캡처합니다. 캡처 시 요청 날짜(`scnYmd`)가 URL에 포함된 응답만 채택해
+     오캡처를 방지합니다.
+  (참고 프로젝트 DongminL/movie_reservation_notification의 세션 재사용 설계)
+- **api 모드** — 처음부터 URL을 알고 있다면 브라우저 없이 요청만 하는 방식.
+  `state/session.json`에 남는 실제 API 주소를 config에 옮기면 전환할 수 있습니다.
 - **응답 파싱은 auto** — CGV 응답 스키마가 바뀌어도 필드 이름 관습(시각/영화명/잔여석
   등)을 휴리스틱으로 찾아냅니다. 잘못 짚으면 `probe` 명령으로 확인하고 `list_path`와
   `fields`를 명시하면 됩니다.
@@ -70,6 +76,11 @@ cp config.example.yaml config.yaml
    (환경변수 `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`가 있으면 우선합니다.)
 3. **오탐 필터** — `alert.ignore_rows: [A, B, C]` — 이 열들"만" 새로 풀린 경우는
    알리지 않습니다. 앞좌석에 관심 없다면 그대로, 다 받고 싶으면 `[]`.
+4. **(선택) IMAX 판별 강화** — `target.grade_code: "03"` — CGV 응답의
+   상영등급코드(`tcscnsGradCd`)로 정확 일치 필터링. 상영관 이름 문자열 매칭보다
+   견고합니다. `probe`로 자기 극장의 값을 확인한 뒤 켜세요.
+5. **(선택) 서버/컨테이너에서 실행** — Chromium이 안 뜨면
+   `browser_args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]`.
 
 ## 사용법
 
@@ -116,6 +127,7 @@ python -m cgv_watcher burst -m 20     # 20분 동안만 2분 간격, 이후 자�
 | 증상 | 원인/해결 |
 |---|---|
 | api 모드에서 403 | Cloudflare 차단. "로그인이 필요해서"가 아닙니다 — browser 모드로 바꾸거나, 파라미터·헤더 누락을 확인하세요. **"불가능"과 "미확인"을 구분할 것.** |
+| browser 모드가 매번 브라우저를 띄움 | 정상이 아닙니다 — `state/session.json`이 만들어지는지, 로그에 "세션 재사용" 이 찍히는지 확인. 세션 직접 요청이 계속 실패하면 그 원인(로그)을 보세요. |
 | browser 모드에서 캡처 실패 | 페이지 구조나 API 이름이 바뀐 것. 개발자도구로 실제 요청 이름을 확인해 `capture_pattern` 갱신. |
 | 회차가 0개로 파싱됨 | `probe`로 리스트 후보와 키 이름을 보고 `list_path`/`fields`를 명시. |
 | 알림이 왔는데 원하는 좌석이 아님 | `alert.ignore_rows`를 조정. 오탐은 실패가 아니라 필터 규칙을 선명하게 만드는 데이터입니다. |

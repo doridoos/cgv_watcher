@@ -23,6 +23,9 @@ def match_showtime(st: Showtime, target: TargetConfig) -> bool:
         return False
     if target.hall_keyword and _norm(target.hall_keyword) not in _norm(st.hall):
         return False
+    # 등급코드가 설정돼 있으면 정확 일치 요구 (이름 매칭보다 견고. IMAX='03')
+    if target.grade_code and st.grade != target.grade_code:
+        return False
     if st.start_time:
         if not (target.time_from <= st.start_time <= target.time_to):
             return False

@@ -10,6 +10,8 @@ target:
   movie_keyword: "오디세이"    # 영화 제목 부분 일치 (공백·대소문자 무시)
   movie_code: ""              # (선택) API가 영화 코드를 요구하면
   hall_keyword: "IMAX"        # 상영관 이름 부분 일치. 전체 감시면 "" 로
+  # grade_code: "03"          # (선택) CGV 상영등급코드 정확 일치. IMAX='03'.
+  #                           # 이름 매칭보다 견고 — probe로 자기 극장 값 확인 후 사용
   screen_code: ""             # (선택) API가 상영관 코드를 요구하면
   date_from: "20260815"       # 감시 시작일 YYYYMMDD (비우면 오늘)
   date_to: "20260817"         # 감시 종료일 (비우면 date_from + days-1)
@@ -30,6 +32,7 @@ poll:
   jitter_sec: 20              # 매 주기에 0~20초 무작위 지연
   timeout_sec: 15
   error_notify_after: 5       # 연속 실패 5회 도달 시 1회 경고 알림
+  session_ttl_min: 20         # 브라우저로 캡처한 API 세션(Cloudflare 쿠키)의 재사용 시간
 
 # ── 텔레그램 ────────────────────────────────────────────────────
 # 환경변수 TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID 가 있으면 그것이 우선.
@@ -40,12 +43,13 @@ telegram:
 
 # ── CGV 조회 엔드포인트 ─────────────────────────────────────────
 # CGV는 공개 API 문서가 없고 Cloudflare 뒤에 있다 (직접 호출하면 403이 나기 쉬움).
-# 그래서 기본은 browser 모드: 실제 예매 페이지를 헤드리스 브라우저로 열고,
-# 페이지가 스스로 부르는 상영시간표 API(searchMovScnInfo) 응답을 가로챈다.
+# 그래서 기본은 browser 모드. 동작 방식(하이브리드):
+#   1) 헤드리스 브라우저로 실제 예매 페이지를 열어, 페이지가 스스로 부르는
+#      상영시간표 API(searchMovScnInfo)의 실제 URL + 헤더(쿠키)를 캡처
+#      → state/session.json 에 저장
+#   2) 이후 폴링은 그 세션으로 가벼운 직접 HTTP 요청 (브라우저 안 띄움)
+#   3) 세션 만료(session_ttl_min)나 요청 실패 시에만 브라우저로 재캡처
 #   필요 패키지: pip install playwright && playwright install chromium
-#
-# 실행하면 state/discovered.json에 캡처된 실제 API URL이 남는다. 그 주소가
-# requests로도 열리면 api 모드로 바꿔 더 가볍게 돌릴 수 있다. (README 참고)
 #
 # 문자열 안에서 쓸 수 있는 플레이스홀더:
 #   {date}        20260815        {date_dash}   2026-08-15
@@ -60,7 +64,7 @@ endpoints:
   # 필수: 날짜별 상영시간표(회차 목록)
   showtimes:
     mode: browser
-    page_url: "https://cgv.co.kr/cnm/movieBook/cinema?siteNo={theater_code}&scnYmd={date}"
+    page_url: "https://cgv.co.kr/cnm/movieBook/cinema?siteNo={theater_code}&siteNm={theater_name}&scnYmd={date}"
     capture_pattern: "searchMovScnInfo"
     list_path: auto
     # auto가 안 맞을 때의 예 (2026년 관측 기준 필드명):
@@ -74,7 +78,7 @@ endpoints:
     #   total: cpSeatCnt
     #   screening_id: scnSseq
 
-  # api 모드 예시 (discovered.json에서 확인한 실제 주소로 교체):
+  # api 모드 예시 (state/session.json에서 확인한 실제 주소로 교체):
   # showtimes:
   #   mode: api
   #   url: "https://cgv.co.kr/…searchMovScnInfo…"
@@ -98,3 +102,6 @@ endpoints:
 
 # 상태 파일 저장 위치 (기본: 설정 파일 옆 state/)
 # state_dir: ./state
+
+# 클라우드 VM/컨테이너에서 Chromium이 안 뜨면 (참고 프로젝트의 CLOUD_SANDBOX_ARGS):
+# browser_args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]

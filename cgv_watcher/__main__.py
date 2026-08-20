@@ -75,10 +75,10 @@ def main(argv: list[str] | None = None) -> int:
         print("\n== 응답 안의 리스트 후보 (auto가 잘못 짚으면 list_path로 지정) ==")
         for c in result["list_candidates"]:
             print(f"  {c['path']}  (항목 {c['size']}개) keys={c['sample_keys']}")
-        discovered = cfg.state_dir / "discovered.json"
-        if discovered.exists():
-            print(f"\n캡처된 실제 API 요청 목록: {discovered}")
-            print("(이 URL을 endpoints.showtimes.url로 옮기면 가벼운 api 모드로 전환 가능)")
+        session_file = cfg.state_dir / "session.json"
+        if session_file.exists():
+            print(f"\n캡처된 API 세션: {session_file}")
+            print("(이후 폴링은 이 세션으로 직접 요청하며, 만료 시 자동 재캡처됩니다)")
         if args.raw:
             print("\n== 원본 응답 ==")
             print(json.dumps(result["raw"], ensure_ascii=False, indent=2)[:20000])

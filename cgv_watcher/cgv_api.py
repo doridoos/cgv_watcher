@@ -12,7 +12,9 @@ from typing import Any, Optional
 
 import requests
 
-from .browser_fetch import fetch_captured_json
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+from .browser_fetch import CapturedSession, fetch_captured_json
 from .config import Config, EndpointConfig
 from .models import Seat, Showtime
 from . import parsers
@@ -57,6 +59,7 @@ class CgvClient:
             "date": date,
             "date_dash": f"{date[:4]}-{date[4:6]}-{date[6:8]}" if len(date) == 8 else date,
             "theater_code": t.theater_code,
+            "theater_name": t.theater_name,
             "screen_code": t.screen_code,
             "movie_code": t.movie_code,
             "screening_id": "",
@@ -99,16 +102,103 @@ class CgvClient:
                 f"JSON이 아닌 응답: {url}\n앞부분: {resp.text[:300]!r}"
             )
 
+    # ------------------------------------------------ browser 모드 세션 재사용
+    #
+    # 참고 프로젝트(DongminL)의 설계: 브라우저 크롤링은 세션(실제 API URL +
+    # Cloudflare 쿠키가 든 헤더)을 캡처할 때만 쓰고, 평소 폴링은 그 세션으로
+    # 직접 HTTP 요청한다. 세션이 만료(TTL)되거나 직접 요청이 실패하면
+    # 세션을 버리고 브라우저로 재캡처한다.
+
+    @property
+    def _session_path(self):
+        return self.cfg.state_dir / "session.json"
+
+    def _load_session(self) -> Optional[CapturedSession]:
+        try:
+            d = json.loads(self._session_path.read_text(encoding="utf-8"))
+            return CapturedSession(
+                api_url=d["api_url"],
+                headers=d["headers"],
+                date=d.get("date", ""),
+                captured_at=d["captured_at"],
+            )
+        except (OSError, KeyError, json.JSONDecodeError):
+            return None
+
+    def _save_session(self, s: CapturedSession) -> None:
+        self._session_path.write_text(
+            json.dumps(
+                {
+                    "api_url": s.api_url,
+                    "headers": s.headers,
+                    "date": s.date,
+                    "captured_at": s.captured_at,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+    def _drop_session(self) -> None:
+        self._session_path.unlink(missing_ok=True)
+
+    @staticmethod
+    def _session_url_for_date(session: CapturedSession, date: str) -> Optional[str]:
+        """캡처된 URL의 날짜 파라미터를 원하는 날짜로 교체. 못 찾으면 None."""
+        if date == session.date:
+            return session.api_url
+        parts = urlsplit(session.api_url)
+        q = parse_qsl(parts.query, keep_blank_values=True)
+        replaced = [(k, date if v == session.date else v) for k, v in q]
+        if replaced == q:  # 날짜 파라미터를 못 찾음 → 이 세션으론 다른 날짜 조회 불가
+            return None
+        return urlunsplit(parts._replace(query=urlencode(replaced)))
+
+    def _fetch_via_session(self, session: CapturedSession, date: str) -> Any:
+        url = self._session_url_for_date(session, date)
+        if url is None:
+            raise CgvApiError(f"세션 URL에서 날짜 파라미터({session.date})를 찾지 못함")
+        resp = requests.get(
+            url, headers=session.headers, timeout=self.cfg.poll.timeout_sec
+        )
+        if resp.status_code != 200:
+            raise CgvApiError(f"세션 직접 요청 HTTP {resp.status_code}")
+        try:
+            return resp.json()
+        except json.JSONDecodeError:
+            raise CgvApiError("세션 직접 요청이 JSON이 아닌 응답을 반환 (세션 만료?)")
+
     def _fetch_raw(self, ep: EndpointConfig, vars: dict[str, str]) -> list[Any]:
         """모드에 따라 응답 JSON들을 가져온다 (browser 모드는 여러 개일 수 있음)."""
-        if ep.mode == "browser":
-            return fetch_captured_json(
-                page_url=_render(ep.page_url, vars),
-                capture_pattern=ep.capture_pattern,
-                timeout_sec=max(self.cfg.poll.timeout_sec, 30),
-                discovered_path=self.cfg.state_dir / "discovered.json",
-            )
-        return [self._request(ep, vars)]
+        if ep.mode != "browser":
+            return [self._request(ep, vars)]
+
+        date = vars.get("date", "")
+        session = self._load_session()
+        if session is not None:
+            if session.age_sec() < self.cfg.poll.session_ttl_min * 60:
+                try:
+                    data = self._fetch_via_session(session, date)
+                    log.debug("세션 재사용으로 조회 (age %.0fs)", session.age_sec())
+                    return [data]
+                except (CgvApiError, requests.RequestException) as e:
+                    log.info("세션 직접 요청 실패, 브라우저로 재캡처: %s", e)
+            else:
+                log.info("세션 TTL(%d분) 만료, 브라우저로 재캡처", self.cfg.poll.session_ttl_min)
+            self._drop_session()
+
+        captured, new_session = fetch_captured_json(
+            page_url=_render(ep.page_url, vars),
+            capture_pattern=ep.capture_pattern,
+            date=date,
+            timeout_sec=max(self.cfg.poll.timeout_sec, 30),
+            browser_args=self.cfg.browser_args,
+        )
+        if new_session is not None:
+            self._save_session(new_session)
+            log.info("API 세션 캡처: %s", new_session.api_url.split("?")[0])
+        return captured
 
     # ------------------------------------------------------------- 공개 메서드
 
@@ -137,7 +227,7 @@ class CgvClient:
         if ep.mode == "browser":
             raise CgvApiError(
                 "seats 엔드포인트는 api 모드만 지원합니다 (좌석 화면은 회차 클릭이 "
-                "필요해서 단순 페이지 로드로는 캡처가 안 됨). state/discovered.json과 "
+                "필요해서 단순 페이지 로드로는 캡처가 안 됨). state/session.json과 "
                 "개발자도구로 좌석 API 주소를 찾아 url로 지정해주세요."
             )
         data = self._request(ep, self._vars(showtime=showtime))

@@ -56,6 +56,7 @@ class TargetConfig:
     movie_keyword: str = ""  # 영화 제목 부분 일치 (공백 무시, 대소문자 무시)
     movie_code: str = ""
     hall_keyword: str = "IMAX"  # 상영관 이름 부분 일치
+    grade_code: str = ""  # 상영등급코드 정확 일치 (CGV: IMAX='03'). 이름 매칭보다 견고
     screen_code: str = ""
     date_from: str = ""  # YYYYMMDD, 비우면 오늘
     date_to: str = ""  # YYYYMMDD, 비우면 date_from + (days-1)
@@ -112,6 +113,9 @@ class PollConfig:
     jitter_sec: int = 20  # 서버 부담과 패턴 감지를 줄이기 위한 무작위 지연
     timeout_sec: int = 15
     error_notify_after: int = 5  # 연속 실패가 이 횟수에 도달하면 1회 경고 알림
+    # 브라우저로 캡처한 세션(Cloudflare 쿠키 포함)의 재사용 시간.
+    # __cf_bm 쿠키 수명이 약 30분이라 여유를 두고 20분 (참고 프로젝트와 동일)
+    session_ttl_min: int = 20
 
 
 @dataclass
@@ -122,6 +126,9 @@ class Config:
     poll: PollConfig
     endpoints: dict[str, EndpointConfig]
     state_dir: Path
+    # 클라우드 VM 등에서 Chromium 실행에 필요한 인자 (참고 프로젝트의 CLOUD_SANDBOX_ARGS)
+    # 예: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+    browser_args: list[str] = field(default_factory=list)
     user_agent: str = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
@@ -172,6 +179,7 @@ def load_config(path: str | Path) -> Config:
         movie_keyword=str(t_raw.get("movie_keyword") or ""),
         movie_code=str(t_raw.get("movie_code") or ""),
         hall_keyword=str(t_raw.get("hall_keyword") or ""),
+        grade_code=str(t_raw.get("grade_code") or ""),
         screen_code=str(t_raw.get("screen_code") or ""),
         date_from=str(t_raw.get("date_from") or ""),
         date_to=str(t_raw.get("date_to") or ""),
@@ -194,6 +202,7 @@ def load_config(path: str | Path) -> Config:
         jitter_sec=int(p_raw.get("jitter_sec") or 20),
         timeout_sec=int(p_raw.get("timeout_sec") or 15),
         error_notify_after=int(p_raw.get("error_notify_after") or 5),
+        session_ttl_min=int(p_raw.get("session_ttl_min") or 20),
     )
     if poll.interval_sec < 60:
         raise ConfigError("poll.interval_sec는 60초 이상으로 설정해주세요 (서버 부담 방지)")
@@ -216,5 +225,6 @@ def load_config(path: str | Path) -> Config:
         poll=poll,
         endpoints=endpoints,
         state_dir=state_dir,
+        browser_args=[str(a) for a in (raw.get("browser_args") or [])],
         user_agent=str(raw.get("user_agent") or Config.user_agent),
     )
