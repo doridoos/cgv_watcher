@@ -178,6 +178,10 @@ curl -fsSL https://raw.githubusercontent.com/doridoos/cgv_watcher/claude/cgv-tic
 중간에 텔레그램 봇 토큰과 chat_id만 물어봅니다. 끝나면 자동으로 `probe`를
 돌려 그 서버 IP에서 CGV 조회가 되는지 판정해줍니다. 이후는 텔레그램 `/start`.
 
+설치 위치는 실행 디렉토리와 무관하게 기본 `~/cgv_watcher` 고정입니다
+(재실행 시 같은 곳을 갱신). 다른 곳을 원하면
+`curl … | CGV_DIR="$PWD/cgv_watcher" bash` 처럼 지정하세요.
+
 **최소 변경 원칙** — 다른 프로그램이 함께 도는 서버를 전제로 합니다:
 시스템 타임존·스왑·fstab은 건드리지 않고(확인만), 없는 패키지만 설치하며,
 systemd 유닛도 내용이 바뀌었을 때만 갱신합니다. KST 시각은 시스템 설정이

@@ -7,6 +7,11 @@ set -euo pipefail
 # 사용 (SSH 접속 후 한 줄):
 #   curl -fsSL https://raw.githubusercontent.com/doridoos/cgv_watcher/claude/cgv-ticket-monitor-57h7t0/deploy/setup_gcp.sh | bash
 #
+# 설치 위치: 실행 디렉토리와 무관하게 기본 ~/cgv_watcher 고정.
+#   다른 곳을 원하면:  curl ... | CGV_DIR="$PWD/cgv_watcher" bash
+#   (위치를 바꿔 재실행하면 새 위치에 새로 클론되고 systemd가 그쪽을 보게 됨
+#    — 처음 정한 위치를 계속 쓰는 것을 권장)
+#
 # 비대화식으로 쓰려면 미리:
 #   export TELEGRAM_BOT_TOKEN=123456:ABC...
 #   export TELEGRAM_CHAT_ID=111111111
