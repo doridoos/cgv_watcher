@@ -1,6 +1,7 @@
 """CLI 진입점.
 
   python -m cgv_watcher watch            # 폴링 루프 시작
+  python -m cgv_watcher bot              # 텔레그램 버튼 메뉴로 설정/제어 (감시 포함)
   python -m cgv_watcher once             # 1회 조회 (cron용)
   python -m cgv_watcher once --dry-run   # 알림 없이 조회만
   python -m cgv_watcher probe            # 엔드포인트 진단 (파싱 결과 + 후보 목록)
@@ -30,6 +31,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("watch", help="폴링 루프 시작")
+    sub.add_parser("bot", help="텔레그램 대화형 봇 (버튼 메뉴로 설정·시작·중지)")
     p_once = sub.add_parser("once", help="1회 조회 (cron에서 사용)")
     p_once.add_argument("--dry-run", action="store_true", help="알림을 보내지 않음")
     p_probe = sub.add_parser("probe", help="엔드포인트 진단")
@@ -57,6 +59,18 @@ def main(argv: list[str] | None = None) -> int:
             run_loop(cfg)
         except KeyboardInterrupt:
             print("\n감시 종료")
+        return 0
+
+    if args.command == "bot":
+        from .telegram_bot import run_bot
+
+        try:
+            run_bot(args.config)
+        except KeyboardInterrupt:
+            print("\n봇 종료")
+        except ConfigError as e:
+            print(f"설정 오류: {e}", file=sys.stderr)
+            return 2
         return 0
 
     if args.command == "once":

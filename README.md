@@ -91,6 +91,35 @@ python -m cgv_watcher once --dry-run  # 알림 없이 1회 조회
 python -m cgv_watcher watch           # 감시 시작 (기본 5분 간격)
 ```
 
+### 텔레그램 버튼 메뉴로 설정하기 (bot 모드) — config 수동 편집 불필요
+
+```bash
+python -m cgv_watcher bot
+```
+
+최초 1회만 `config.yaml`에 텔레그램 토큰/chat_id를 넣으면, 그 뒤로는
+**모든 설정과 제어를 텔레그램 버튼으로** 합니다:
+
+```
+📊 상태          🔍 지금 조회
+▶️ 감시 시작     ⏸ 감시 중지
+🎬 영화          🏢 극장
+📅 날짜          ⏰ 시간대
+🪑 앞열 필터     ⚡ 버스트 20분
+```
+
+- **영화/극장/날짜/시간대** — 프리셋 버튼(오늘부터 7·14일, 10:30~21:00, 용산 등)
+  또는 "직접 입력" 후 채팅으로 값 전송
+- **감시 시작/중지** — 같은 프로세스의 백그라운드 스레드가 감시를 돌며,
+  버튼으로 바꾼 설정은 다음 조회부터 바로 적용
+- **지금 조회 / 버스트** — 즉시 1회 조회, 20분간 2분 간격
+- 봇이 바꾼 값은 `state/overrides.yaml`에 저장되어 `config.yaml`(주석 있는
+  원본) 위에 병합됩니다. 원본 파일은 절대 덮어쓰지 않습니다
+- 설정된 `chat_id` 외의 사용자는 완전히 무시합니다 (남이 봇을 찾아도 조작 불가)
+
+서버에 올려두는 용도라면 `watch` 대신 `bot`을 서비스로 돌리는 것을 추천합니다 —
+폰에서 감시 대상을 바꿀 때마다 서버에 접속할 필요가 없어집니다.
+
 취소표가 곧 풀릴 것 같은 순간(예매 오픈 직후 등)에는 **버스트 모드**:
 
 ```bash
@@ -136,6 +165,54 @@ target:
 ```cron
 */5 * * * * cd /path/to/cgv_watcher && .venv/bin/python -m cgv_watcher once >> watch.log 2>&1
 ```
+
+## GCP 등 클라우드 서버에서 돌리기
+
+가능합니다. 체크리스트:
+
+1. **리전은 서울(asia-northeast3)** — 해외 IP는 CGV/Cloudflare가 막을 확률이
+   높습니다. 국내 리전이어도 데이터센터 IP 대역을 Cloudflare가 의심할 수는
+   있으니(browser 모드가 이를 우회할 가능성이 높지만 보장은 아님), 배포 후
+   `probe`로 먼저 확인하세요.
+2. **사양** — e2-small(2GB) 권장. Chromium이 순간 300~500MB를 씁니다.
+   e2-micro(1GB)는 스왑을 잡으면 돌아는 갑니다.
+3. **타임존** — `sudo timedatectl set-timezone Asia/Seoul`. 롤링 날짜 계산과
+   cron 시각이 KST 기준이 되어야 합니다.
+4. **설치** — Playwright가 시스템 라이브러리까지 설치하도록:
+   ```bash
+   sudo apt update && sudo apt install -y python3-venv git
+   git clone -b claude/cgv-ticket-monitor-57h7t0 https://github.com/doridoos/cgv_watcher.git
+   cd cgv_watcher && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+   .venv/bin/playwright install --with-deps chromium
+   ```
+5. **config.yaml** — 텔레그램 토큰/chat_id만 채우고, `browser_args`를 켭니다:
+   ```yaml
+   browser_args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+   ```
+6. **systemd 서비스로 상시 실행** (`/etc/systemd/system/cgv-watcher.service`):
+   ```ini
+   [Unit]
+   Description=CGV ticket watcher bot
+   After=network-online.target
+
+   [Service]
+   User=YOUR_USER
+   WorkingDirectory=/home/YOUR_USER/cgv_watcher
+   ExecStart=/home/YOUR_USER/cgv_watcher/.venv/bin/python -m cgv_watcher bot
+   Restart=on-failure
+   RestartSec=30
+   Environment=TZ=Asia/Seoul
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+   ```bash
+   sudo systemctl daemon-reload && sudo systemctl enable --now cgv-watcher
+   journalctl -u cgv-watcher -f     # 로그 확인
+   ```
+
+이후에는 서버에 접속할 일 없이 텔레그램 버튼으로 감시 대상 변경·시작·중지를
+다 할 수 있습니다.
 
 ## 좌석 상세(선택): "새 좌석: E6"까지 받으려면
 
@@ -183,5 +260,6 @@ cgv_watcher/
 ├── state.py          # 직전 관측값 저장·변화 계산 (state/state.json)
 ├── notify.py         # 메시지 포맷 + 텔레그램 전송
 ├── scheduler.py      # 폴링 루프, 버스트 모드
+├── telegram_bot.py   # 대화형 봇: 버튼 메뉴 설정 UX + 감시 스레드
 └── watcher.py        # 1사이클: 조회→필터→비교→알림→저장
 ```

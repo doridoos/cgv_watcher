@@ -169,6 +169,19 @@ def load_config(path: str | Path) -> Config:
         )
     raw: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
+    # 텔레그램 봇(bot 모드)이 바꾼 값은 state/overrides.yaml에 저장된다.
+    # config.yaml(주석 있는 원본)은 건드리지 않고 그 위에 병합한다.
+    ov_state_dir = Path(raw.get("state_dir") or (path.parent / "state"))
+    ov_path = ov_state_dir / "overrides.yaml"
+    if ov_path.exists():
+        try:
+            overrides = yaml.safe_load(ov_path.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError:
+            overrides = {}
+        for section in ("target", "alert", "poll"):
+            if isinstance(overrides.get(section), dict):
+                raw[section] = {**(raw.get(section) or {}), **overrides[section]}
+
     tg_raw = raw.get("telegram") or {}
     telegram = TelegramConfig(
         bot_token=os.environ.get("TELEGRAM_BOT_TOKEN") or str(tg_raw.get("bot_token") or ""),
