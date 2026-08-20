@@ -168,12 +168,24 @@ target:
 
 ## GCP 등 클라우드 서버에서 돌리기
 
-가능합니다. 체크리스트:
+**원클릭 설치** — VM에 SSH 접속 후 한 줄이면 끝납니다 (패키지·스왑·타임존·
+Chromium·systemd 등록·검증까지 전부 자동, 재실행해도 안전):
 
-1. **리전은 서울(asia-northeast3)** — 해외 IP는 CGV/Cloudflare가 막을 확률이
-   높습니다. 국내 리전이어도 데이터센터 IP 대역을 Cloudflare가 의심할 수는
-   있으니(browser 모드가 이를 우회할 가능성이 높지만 보장은 아님), 배포 후
-   `probe`로 먼저 확인하세요.
+```bash
+curl -fsSL https://raw.githubusercontent.com/doridoos/cgv_watcher/claude/cgv-ticket-monitor-57h7t0/deploy/setup_gcp.sh | bash
+```
+
+중간에 텔레그램 봇 토큰과 chat_id만 물어봅니다. 끝나면 자동으로 `probe`를
+돌려 그 서버 IP에서 CGV 조회가 되는지 판정해줍니다. 이후는 텔레그램 `/start`.
+
+수동으로 하고 싶다면 아래 체크리스트:
+
+1. **리전은 서울(asia-northeast3) 권장** — 해외 IP는 CGV/Cloudflare가 막을
+   확률이 높습니다. GCP 무료 티어(e2-micro)는 미국 리전만 제공되므로 일단
+   미국에서 `probe`로 시도해보고, 막히면 서울 리전 VM(월 소액) 또는 서울
+   리전이 있는 무료 대안(Oracle Cloud Free Tier 등)으로 이전하세요. 국내
+   리전이어도 데이터센터 IP를 Cloudflare가 의심할 수는 있습니다(browser
+   모드가 우회할 가능성이 높지만 보장은 아님).
 2. **사양** — e2-small(2GB) 권장. Chromium이 순간 300~500MB를 씁니다.
    e2-micro(1GB)는 스왑을 잡으면 돌아는 갑니다.
 3. **타임존** — `sudo timedatectl set-timezone Asia/Seoul`. 롤링 날짜 계산과
