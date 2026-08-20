@@ -30,6 +30,11 @@ class BrowserFetchError(Exception):
     pass
 
 
+class BlockedError(BrowserFetchError):
+    """CGV/Cloudflare가 이 IP를 차단했다. 계속 두드리면 차단이 길어지므로
+    호출부는 폴링을 멈추고 사용자에게 알려야 한다."""
+
+
 # Cloudflare 챌린지/차단 페이지 판별 단서
 _CF_TITLE_HINTS = ("just a moment", "attention required", "잠시만", "access denied")
 _CF_HTML_HINTS = ("challenge-platform", "cf-chl", "cf-error", "cloudflare")
@@ -38,6 +43,16 @@ _CF_HTML_HINTS = ("challenge-platform", "cf-chl", "cf-error", "cloudflare")
 def looks_like_cloudflare_block(title: str, html: str) -> bool:
     t, h = title.lower(), html.lower()
     return any(x in t for x in _CF_TITLE_HINTS) or any(x in h for x in _CF_HTML_HINTS)
+
+
+# CGV가 직접 띄우는 이용제한 안내("비정상적으로 CGV에 접속한 것이 확인되어
+# 이용이 제한되었어요"). Cloudflare 챌린지와 달리 IP 단위 차단이라 재시도는 무의미.
+_CGV_BLOCK_HINTS = ("이용이 제한", "비정상적으로 cgv", "비정상적인 접근")
+
+
+def looks_like_cgv_block(html: str) -> bool:
+    h = html.lower()
+    return any(x in h for x in _CGV_BLOCK_HINTS)
 
 
 @dataclass
@@ -136,6 +151,7 @@ def fetch_captured_json(
                         "final_url": page.url,
                         "title": title,
                         "cloudflare": looks_like_cloudflare_block(title, html),
+                        "cgv_block": looks_like_cgv_block(html),
                     }
                     if debug_dir is not None:
                         debug_dir.mkdir(parents=True, exist_ok=True)
@@ -182,11 +198,20 @@ def fetch_captured_json(
             f"{timeout_sec}초 안에 '{capture_pattern}' 응답을 잡지 못했습니다.",
             f"요청한 페이지: {page_url}",
         ]
+        blocked = False
         if fail_diag:
             lines.append(
                 f"실제 도착한 페이지: {fail_diag['final_url']} (제목: {fail_diag['title']!r})"
             )
-            if fail_diag["cloudflare"]:
+            if fail_diag.get("cgv_block"):
+                blocked = True
+                lines.append(
+                    "⛔ CGV가 이 IP의 이용을 제한했습니다('비정상적으로 접속' 안내). "
+                    "재시도는 차단을 길게 만들 뿐이니 감시를 멈추고, 시간을 두고 "
+                    "다른 네트워크(국내 가정용 IP)에서 시도하세요."
+                )
+            elif fail_diag["cloudflare"]:
+                blocked = True
                 lines.append(
                     "⛔ Cloudflare 보안 확인/차단 페이지입니다 — 이 서버 IP(해외·"
                     "데이터센터)가 막힌 것으로, 국내 IP 환경에서 실행해야 합니다."
@@ -204,6 +229,7 @@ def fetch_captured_json(
         if seen_requests:
             lines.append(f"페이지가 부른 XHR/fetch {len(seen_requests)}개 중 일부:")
             lines += [f"  {r}" for r in seen_requests[:12]]
-        raise BrowserFetchError("\n".join(lines))
+        err = BlockedError if blocked else BrowserFetchError
+        raise err("\n".join(lines))
 
     return [m["json"] for m in wanted], session

@@ -16,6 +16,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from .browser_fetch import BlockedError
 from .cgv_api import CgvClient
 from .config import Config
 from .notify import Notifier
@@ -77,6 +78,15 @@ def run_loop(cfg: Config) -> None:
             consecutive_errors = 0
         except KeyboardInterrupt:
             raise
+        except BlockedError as e:
+            # IP 차단은 재시도로 풀리지 않고 오히려 길어진다 — 즉시 중단
+            log.error("IP 차단 감지 — 감시를 중단합니다: %s", e)
+            notifier.send(
+                "⛔ CGV가 이 IP의 접속을 제한했습니다. 감시를 중단합니다.\n"
+                "재시도는 차단을 길게 만들 수 있으니, 시간을 두고 다른 네트워크"
+                "(국내 가정용 IP)에서 다시 시작해주세요."
+            )
+            return
         except Exception as e:
             consecutive_errors += 1
             log.error("조회 실패 (%d연속): %s", consecutive_errors, e)

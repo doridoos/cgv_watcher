@@ -149,3 +149,20 @@ def test_cloudflare_detection():
     assert looks_like_cloudflare_block("Just a moment...", "<html>")
     assert looks_like_cloudflare_block("", "<div class=cf-chl-widget>")
     assert not looks_like_cloudflare_block("CGV 예매", "<html>정상 페이지</html>")
+
+
+def test_cgv_block_detection():
+    from cgv_watcher.browser_fetch import looks_like_cgv_block
+
+    # 실제 차단 페이지 문구
+    assert looks_like_cgv_block(
+        "<h1>비정상적으로 CGV에 접속한 것이 확인되어 이용이 제한되었어요.</h1>"
+    )
+    assert not looks_like_cgv_block("<html>정상 예매 페이지</html>")
+
+
+def test_blocked_error_is_distinct_from_generic_error():
+    from cgv_watcher.browser_fetch import BlockedError, BrowserFetchError
+
+    # 차단은 별도 예외로 잡아 폴링을 멈출 수 있어야 한다
+    assert issubclass(BlockedError, BrowserFetchError)

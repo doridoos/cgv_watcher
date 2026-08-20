@@ -27,6 +27,7 @@ from typing import Any, Optional
 import requests
 import yaml
 
+from .browser_fetch import BlockedError
 from .config import Config, ConfigError, load_config
 from .notify import Notifier
 from .scheduler import current_interval, set_burst
@@ -203,6 +204,17 @@ class WatchWorker(threading.Thread):
                     try:
                         run_once(cfg)
                         self.consecutive_errors = 0
+                    except BlockedError as e:
+                        # IP 차단 — 감시를 자동으로 끄고 알린다 (재시도 금지)
+                        log.error("IP 차단 감지 — 감시 중지: %s", e)
+                        save_override(
+                            cfg.state_dir / "overrides.yaml", "watch", {"enabled": False}
+                        )
+                        Notifier(cfg.telegram, cfg.poll.timeout_sec).send(
+                            "⛔ CGV가 이 IP의 접속을 제한해 감시를 자동 중지했습니다.\n"
+                            "재시도는 차단을 길게 만들 수 있습니다. 시간을 두고 다른 "
+                            "네트워크(국내 가정용 IP)에서 ▶️ 감시 시작을 눌러주세요."
+                        )
                     except Exception as e:
                         self.consecutive_errors += 1
                         log.error("조회 실패 (%d연속): %s", self.consecutive_errors, e)
