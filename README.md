@@ -178,6 +178,11 @@ curl -fsSL https://raw.githubusercontent.com/doridoos/cgv_watcher/claude/cgv-tic
 중간에 텔레그램 봇 토큰과 chat_id만 물어봅니다. 끝나면 자동으로 `probe`를
 돌려 그 서버 IP에서 CGV 조회가 되는지 판정해줍니다. 이후는 텔레그램 `/start`.
 
+**최소 변경 원칙** — 다른 프로그램이 함께 도는 서버를 전제로 합니다:
+시스템 타임존·스왑·fstab은 건드리지 않고(확인만), 없는 패키지만 설치하며,
+systemd 유닛도 내용이 바뀌었을 때만 갱신합니다. KST 시각은 시스템 설정이
+아니라 서비스의 `Environment=TZ=Asia/Seoul`로 보장됩니다.
+
 수동으로 하고 싶다면 아래 체크리스트:
 
 1. **리전은 서울(asia-northeast3) 권장** — 해외 IP는 CGV/Cloudflare가 막을
@@ -187,9 +192,11 @@ curl -fsSL https://raw.githubusercontent.com/doridoos/cgv_watcher/claude/cgv-tic
    리전이어도 데이터센터 IP를 Cloudflare가 의심할 수는 있습니다(browser
    모드가 우회할 가능성이 높지만 보장은 아님).
 2. **사양** — e2-small(2GB) 권장. Chromium이 순간 300~500MB를 씁니다.
-   e2-micro(1GB)는 스왑을 잡으면 돌아는 갑니다.
-3. **타임존** — `sudo timedatectl set-timezone Asia/Seoul`. 롤링 날짜 계산과
-   cron 시각이 KST 기준이 되어야 합니다.
+   램+스왑 합계가 1.5GB는 되어야 안정적입니다 (부족하면 스왑을 직접 잡으세요 —
+   스크립트는 시스템을 건드리지 않습니다).
+3. **타임존** — 시스템 타임존을 바꿀 필요 없습니다. systemd 유닛의
+   `Environment=TZ=Asia/Seoul`로 이 서비스만 KST로 동작합니다. cron으로 돌릴
+   때만 crontab 상단에 `TZ=Asia/Seoul` 또는 `CRON_TZ=Asia/Seoul`을 넣으세요.
 4. **설치** — Playwright가 시스템 라이브러리까지 설치하도록:
    ```bash
    sudo apt update && sudo apt install -y python3-venv git

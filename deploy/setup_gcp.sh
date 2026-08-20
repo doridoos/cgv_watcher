@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ─────────────────────────────────────────────────────────────────
-# CGV 표 감시기 — GCP(우분투/데비안) VM 원클릭 설치 스크립트
+# CGV 표 감시기 — GCP(우분투/데비안) VM 설치 스크립트 (최소 변경 원칙)
 #
 # 사용 (SSH 접속 후 한 줄):
 #   curl -fsSL https://raw.githubusercontent.com/doridoos/cgv_watcher/claude/cgv-ticket-monitor-57h7t0/deploy/setup_gcp.sh | bash
@@ -11,9 +11,10 @@ set -euo pipefail
 #   export TELEGRAM_BOT_TOKEN=123456:ABC...
 #   export TELEGRAM_CHAT_ID=111111111
 #
-# 하는 일: 패키지 설치 → KST 타임존 → (1GB 램이면) 스왑 → 코드 클론 →
-#          venv + Chromium → config.yaml 생성 → systemd 서비스 등록/시작 →
-#          텔레그램 테스트 + CGV 조회 진단(probe)
+# 다른 프로그램이 함께 도는 서버를 전제로, 시스템 설정은 건드리지 않는다:
+#   - 시스템 타임존 변경 없음 (서비스만 TZ=Asia/Seoul 환경변수로 KST 동작)
+#   - 스왑/fstab 변경 없음 (메모리 상태는 확인만 하고 알려줌)
+#   - 패키지/Chromium은 없을 때만 설치, systemd 유닛은 내용이 바뀌었을 때만 갱신
 # 재실행해도 안전(멱등)합니다.
 # ─────────────────────────────────────────────────────────────────
 
@@ -23,28 +24,35 @@ APP_DIR="${CGV_DIR:-$HOME/cgv_watcher}"
 
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$*"; }
 
-log "1/7 시스템 패키지 설치"
-sudo apt-get update -qq
-sudo apt-get install -y -qq python3-venv python3-pip git curl
-
-log "2/7 타임존을 Asia/Seoul로 (롤링 날짜 계산이 KST 기준이어야 함)"
-sudo timedatectl set-timezone Asia/Seoul || echo "  (타임존 설정 실패 — 무시하고 진행)"
-
-log "3/7 스왑 확인 (e2-micro 1GB 대비)"
-mem_kb=$(awk '/MemTotal/{print $2}' /proc/meminfo)
-swap_kb=$(awk '/SwapTotal/{print $2}' /proc/meminfo)
-if [ "$mem_kb" -lt 1500000 ] && [ "$swap_kb" -eq 0 ]; then
-  sudo fallocate -l 1G /swapfile
-  sudo chmod 600 /swapfile
-  sudo mkswap /swapfile >/dev/null
-  sudo swapon /swapfile
-  echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
-  echo "  램 ${mem_kb}kB → 스왑 1GB 생성 (Chromium 실행용)"
+log "1/6 시스템 패키지 확인 (없는 것만 설치)"
+missing=()
+command -v git >/dev/null || missing+=(git)
+command -v curl >/dev/null || missing+=(curl)
+python3 -c 'import venv' 2>/dev/null || missing+=(python3-venv)
+if [ "${#missing[@]}" -gt 0 ]; then
+  echo "  설치: ${missing[*]}"
+  sudo apt-get update -qq
+  sudo apt-get install -y -qq "${missing[@]}"
 else
-  echo "  스왑 불필요하거나 이미 있음 (램 ${mem_kb}kB, 스왑 ${swap_kb}kB)"
+  echo "  모두 있음 — 아무것도 설치하지 않음"
 fi
 
-log "4/7 코드 받기 ($BRANCH)"
+log "2/6 환경 확인 (변경하지 않음)"
+sys_tz=$(timedatectl show -p Timezone --value 2>/dev/null || cat /etc/timezone 2>/dev/null || echo "unknown")
+if [ "$sys_tz" = "Asia/Seoul" ]; then
+  echo "  타임존: Asia/Seoul ✓"
+else
+  echo "  타임존: $sys_tz — 시스템은 그대로 둡니다."
+  echo "         (감시 서비스는 TZ=Asia/Seoul 환경변수로 실행되므로 KST로 동작)"
+fi
+mem_kb=$(awk '/MemTotal/{print $2}' /proc/meminfo)
+swap_kb=$(awk '/SwapTotal/{print $2}' /proc/meminfo)
+echo "  메모리: $((mem_kb / 1024))MB / 스왑: $((swap_kb / 1024))MB ✓ (변경 안 함)"
+if [ "$((mem_kb + swap_kb))" -lt 1500000 ]; then
+  echo "  ⚠️ 램+스왑이 1.5GB 미만이라 Chromium 실행이 빠듯할 수 있습니다."
+fi
+
+log "3/6 코드 받기 ($BRANCH)"
 if [ -d "$APP_DIR/.git" ]; then
   git -C "$APP_DIR" fetch origin "$BRANCH"
   git -C "$APP_DIR" checkout "$BRANCH"
@@ -54,16 +62,19 @@ else
 fi
 cd "$APP_DIR"
 
-log "5/7 파이썬 환경 + Chromium"
+log "4/6 파이썬 환경 + Chromium (이미 있으면 건너뜀)"
 [ -d .venv ] || python3 -m venv .venv
-.venv/bin/pip install -q --upgrade pip
 .venv/bin/pip install -q -r requirements.txt
-sudo .venv/bin/playwright install-deps chromium
-.venv/bin/playwright install chromium
+if ls "${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"/chromium*/chrome-linux/chrome >/dev/null 2>&1; then
+  echo "  Chromium 이미 설치됨 — 건너뜀"
+else
+  sudo .venv/bin/playwright install-deps chromium
+  .venv/bin/playwright install chromium
+fi
 
-log "6/7 config.yaml"
+log "5/6 config.yaml"
 [ -f config.yaml ] || cp config.example.yaml config.yaml
-# 클라우드 VM용 Chromium 인자 활성화
+# 클라우드 VM용 Chromium 인자 활성화 (이 프로젝트 설정 파일만 수정)
 grep -q '^browser_args:' config.yaml || \
   sed -i 's|^# browser_args:|browser_args:|' config.yaml
 
@@ -84,9 +95,9 @@ if grep -q '^  chat_id: ""' config.yaml; then
 fi
 echo "  config.yaml 준비 완료 (세부 감시 설정은 텔레그램 봇 버튼으로)"
 
-log "7/7 systemd 서비스 등록·시작"
-sudo tee /etc/systemd/system/cgv-watcher.service >/dev/null <<UNIT
-[Unit]
+log "6/6 systemd 서비스 (내용이 바뀌었을 때만 갱신)"
+unit_file=/etc/systemd/system/cgv-watcher.service
+unit_content="[Unit]
 Description=CGV ticket watcher bot
 After=network-online.target
 Wants=network-online.target
@@ -100,10 +111,16 @@ RestartSec=30
 Environment=TZ=Asia/Seoul
 
 [Install]
-WantedBy=multi-user.target
-UNIT
-sudo systemctl daemon-reload
-sudo systemctl enable --now cgv-watcher
+WantedBy=multi-user.target"
+if [ -f "$unit_file" ] && [ "$(cat "$unit_file")" = "$unit_content" ]; then
+  echo "  유닛 파일 동일 — 그대로 둠"
+  sudo systemctl is-active --quiet cgv-watcher || sudo systemctl start cgv-watcher
+else
+  printf '%s\n' "$unit_content" | sudo tee "$unit_file" >/dev/null
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now cgv-watcher
+  sudo systemctl restart cgv-watcher
+fi
 
 log "검증: 텔레그램 전송 테스트"
 .venv/bin/python -m cgv_watcher test-telegram || true
