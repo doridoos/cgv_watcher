@@ -27,11 +27,16 @@ def _title_prefix(cfg: Config) -> str:
     return name
 
 
-def run_once(cfg: Config, client: CgvClient | None = None, dry_run: bool = False) -> list[Change]:
+def run_once(
+    cfg: Config,
+    client: CgvClient | None = None,
+    dry_run: bool = False,
+    notifier: Notifier | None = None,
+) -> list[Change]:
     """한 번 조회하고 필요 시 알림. 발생한 변화 목록을 반환."""
     client = client or CgvClient(cfg)
     store = StateStore(cfg.state_dir)
-    notifier = Notifier(cfg.telegram, cfg.poll.timeout_sec)
+    notifier = notifier or Notifier(cfg.telegram, cfg.poll.timeout_sec)
 
     matched_keys: set[str] = set()
     changes: list[Change] = []
@@ -60,7 +65,34 @@ def run_once(cfg: Config, client: CgvClient | None = None, dry_run: bool = False
     store.prune(matched_keys)
     store.save()
 
-    to_alert = [c for c in changes if should_alert(c, cfg.alert)]
+    # 콜드스타트: 기존 회차를 '오픈'으로 알리지 않는다 (참고 프로젝트의 설계).
+    # 대신 요약 1건으로 감시가 시작됐음을 확인시켜 준다 — 오픈 전이라 회차가
+    # 0개여도 "오픈되면 알려드립니다"가 가서 아이맥스 오픈 감시 시작을 알 수 있다.
+    cold = store.was_empty
+    if cold and cfg.alert.startup_summary:
+        title = _title_prefix(cfg)
+        n = len(changes)
+        if n:
+            total = sum(c.cur_remaining or 0 for c in changes)
+            summary = (
+                f"👀 {title} 감시 시작 — 조건에 맞는 회차 {n}개, 예매 가능 {total}석.\n"
+                "이후 새 회차(예매 오픈)나 빈자리 증가만 알립니다."
+            )
+        else:
+            summary = (
+                f"👀 {title} 감시 시작 — 조건에 맞는 회차가 아직 없습니다.\n"
+                "예매가 오픈되면 바로 알려드립니다."
+            )
+        if dry_run:
+            log.info("[dry-run] 시작 요약 생략:\n%s", summary)
+        else:
+            notifier.send(summary)
+
+    to_alert = [
+        c
+        for c in changes
+        if should_alert(c, cfg.alert) and not (cold and c.first_seen)
+    ]
     if to_alert:
         # 알림에서 바로 예매 페이지로 갈 수 있게 링크 첨부 (첫 알림 회차의 날짜)
         booking_url = ""

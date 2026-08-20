@@ -20,6 +20,9 @@ class StateStore:
     def __init__(self, state_dir: Path):
         self.path = state_dir / "state.json"
         self._data = self._load()
+        # 콜드스타트 = 아는 회차가 하나도 없는 상태에서 시작.
+        # 이때의 first_seen들은 '오픈'이 아니라 그냥 기존 상영 일정이다.
+        self.was_empty = not self._data.get("showtimes")
 
     def _load(self) -> dict:
         if self.path.exists():

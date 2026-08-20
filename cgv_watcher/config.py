@@ -94,6 +94,9 @@ class AlertConfig:
     alert_on_count_only: bool = True
     # 감시 대상 회차가 처음 발견됐을 때(예매 오픈 자체)도 알릴지
     alert_on_new_showtime: bool = True
+    # 콜드스타트(상태 파일이 빈 최초 실행) 때 요약 1건을 보낼지.
+    # 이때의 기존 회차들은 '오픈'으로 알리지 않고 기준값으로만 저장된다
+    startup_summary: bool = True
 
 
 @dataclass
@@ -193,6 +196,7 @@ def load_config(path: str | Path) -> Config:
         ignore_rows=[str(r).upper() for r in (a_raw.get("ignore_rows") or [])],
         alert_on_count_only=bool(a_raw.get("alert_on_count_only", True)),
         alert_on_new_showtime=bool(a_raw.get("alert_on_new_showtime", True)),
+        startup_summary=bool(a_raw.get("startup_summary", True)),
     )
 
     p_raw = raw.get("poll") or {}
