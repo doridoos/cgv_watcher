@@ -1,0 +1,100 @@
+# CGV 표 감시기 설정 예시
+# 이 파일을 config.yaml로 복사한 뒤 값을 채우세요. (config.yaml은 .gitignore 됨)
+#
+#   cp config.example.yaml config.yaml
+
+# ── 무엇을 감시할지 ──────────────────────────────────────────────
+target:
+  theater_name: "용산"        # 알림 메시지에 표시할 극장 이름
+  theater_code: "0013"        # CGV siteNo. 예매 페이지 URL에서 확인 (0013 = 용산아이파크몰)
+  movie_keyword: "오디세이"    # 영화 제목 부분 일치 (공백·대소문자 무시)
+  movie_code: ""              # (선택) API가 영화 코드를 요구하면
+  hall_keyword: "IMAX"        # 상영관 이름 부분 일치. 전체 감시면 "" 로
+  screen_code: ""             # (선택) API가 상영관 코드를 요구하면
+  date_from: "20260815"       # 감시 시작일 YYYYMMDD (비우면 오늘)
+  date_to: "20260817"         # 감시 종료일 (비우면 date_from + days-1)
+  # days: 3                   # date_to 대신 일수로 지정할 수도 있음
+  time_from: "10:30"          # 이 시각 이후에 시작하는 회차만
+  time_to: "21:00"            # 이 시각 이전에 시작하는 회차만
+
+# ── 언제 알릴지 (오탐 필터) ──────────────────────────────────────
+alert:
+  ignore_rows: [A, B, C]      # 이 열들"만" 새로 풀리면 알리지 않음 (앞좌석 오탐 방지)
+  alert_on_count_only: true   # 좌석 상세를 못 볼 때 좌석 수 증가만으로도 알림
+  alert_on_new_showtime: true # 감시 조건에 맞는 회차가 처음 나타나면(예매 오픈) 알림
+
+# ── 폴링 주기 ────────────────────────────────────────────────────
+poll:
+  interval_sec: 300           # 평소 5분 (60초 미만은 거부됨 — 서버에 부담 주지 말 것)
+  burst_interval_sec: 120     # `cgv-watcher burst` 중에는 2분
+  jitter_sec: 20              # 매 주기에 0~20초 무작위 지연
+  timeout_sec: 15
+  error_notify_after: 5       # 연속 실패 5회 도달 시 1회 경고 알림
+
+# ── 텔레그램 ────────────────────────────────────────────────────
+# 환경변수 TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID 가 있으면 그것이 우선.
+# 둘 다 비어 있으면 콘솔 출력만 한다.
+telegram:
+  bot_token: ""               # @BotFather 로 발급
+  chat_id: ""                 # @userinfobot 등으로 확인
+
+# ── CGV 조회 엔드포인트 ─────────────────────────────────────────
+# CGV는 공개 API 문서가 없고 Cloudflare 뒤에 있다 (직접 호출하면 403이 나기 쉬움).
+# 그래서 기본은 browser 모드: 실제 예매 페이지를 헤드리스 브라우저로 열고,
+# 페이지가 스스로 부르는 상영시간표 API(searchMovScnInfo) 응답을 가로챈다.
+#   필요 패키지: pip install playwright && playwright install chromium
+#
+# 실행하면 state/discovered.json에 캡처된 실제 API URL이 남는다. 그 주소가
+# requests로도 열리면 api 모드로 바꿔 더 가볍게 돌릴 수 있다. (README 참고)
+#
+# 문자열 안에서 쓸 수 있는 플레이스홀더:
+#   {date}        20260815        {date_dash}   2026-08-15
+#   {theater_code} {screen_code} {movie_code}   target 섹션의 값
+#   {screening_id}                회차 조회 응답에서 뽑힌 회차 식별자
+#   그 외 회차 응답 JSON의 최상위 키 이름도 그대로 사용 가능 (seats 요청에서)
+#
+# list_path: "auto" 면 응답 구조를 몰라도 휴리스틱으로 회차/좌석 목록을 찾는다.
+# auto가 잘못 짚으면 `python -m cgv_watcher probe` 로 후보 경로를 확인해
+# list_path와 fields를 명시하면 된다.
+endpoints:
+  # 필수: 날짜별 상영시간표(회차 목록)
+  showtimes:
+    mode: browser
+    page_url: "https://cgv.co.kr/cnm/movieBook/cinema?siteNo={theater_code}&scnYmd={date}"
+    capture_pattern: "searchMovScnInfo"
+    list_path: auto
+    # auto가 안 맞을 때의 예 (2026년 관측 기준 필드명):
+    # list_path: "data"
+    # fields:
+    #   date: scnYmd
+    #   start_time: scnsrtTm
+    #   movie: movNm
+    #   hall: scnsEnm
+    #   remaining: frSeatCnt
+    #   total: cpSeatCnt
+    #   screening_id: scnSseq
+
+  # api 모드 예시 (discovered.json에서 확인한 실제 주소로 교체):
+  # showtimes:
+  #   mode: api
+  #   url: "https://cgv.co.kr/…searchMovScnInfo…"
+  #   method: GET
+  #   params:
+  #     siteNo: "{theater_code}"
+  #     scnYmd: "{date}"
+  #   list_path: auto
+
+  # 선택: 회차별 좌석 상세 (있어야 "새 좌석: E6", A~C열 필터가 동작.
+  # 없으면 좌석 수 증가만으로 알림 — 그것만으로도 충분히 쓸 만하다)
+  # seats:
+  #   mode: api
+  #   url: "https://cgv.co.kr/여기에/좌석조회/요청주소"
+  #   method: POST
+  #   json:
+  #     scnsNo: "{scnsNo}"        # 회차 응답의 키 이름을 그대로 플레이스홀더로
+  #     scnSseq: "{scnSseq}"
+  #     scnYmd: "{date}"
+  #   list_path: auto
+
+# 상태 파일 저장 위치 (기본: 설정 파일 옆 state/)
+# state_dir: ./state

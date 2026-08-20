@@ -1,0 +1,5 @@
+requests>=2.31
+PyYAML>=6.0
+
+# browser 모드(기본값)에 필요. 설치 후 `playwright install chromium` 실행.
+playwright>=1.40

@@ -1,0 +1,10 @@
+# 민감정보(텔레그램 토큰)와 로컬 상태
+config.yaml
+state/
+*.log
+
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
