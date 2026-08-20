@@ -104,3 +104,54 @@ def test_norm_time_variants():
 def test_get_path():
     assert parsers.get_path({"a": {"b": [1, 2]}}, "a.b") == [1, 2]
     assert parsers.get_path({"a": {}}, "a.b.c") is None
+
+
+# --------------------- 실측 CGV 데이터에서 드러난 버그 회귀 테스트
+
+REAL_CGV = {
+    "data": [
+        {
+            "scnYmd": "20260815", "scnsNo": "018", "scnSseq": "4",
+            "movNm": "오디세이", "movFomNm": "IMAX LASER 2D",
+            "expoMovNm": "IMAX LASER 2D", "scnsrtTm": "1800", "scnendTm": "2049",
+            "frSeatCnt": 2, "cpSeatCnt": 241, "scnsEnm": "IMAX관",
+            "tcscnsGradCd": "03",
+        },
+        {
+            "scnYmd": "20260815", "scnsNo": "018", "scnSseq": "6",
+            "movNm": "오디세이", "movFomNm": "IMAX LASER 2D",
+            "scnsrtTm": "2500", "frSeatCnt": 6, "cpSeatCnt": 241,
+            "scnsEnm": "IMAX관", "tcscnsGradCd": "03",
+        },
+        {
+            "scnYmd": "20260815", "scnsNo": "001", "scnSseq": "1",
+            "movNm": "다른영화", "movFomNm": "2D", "scnsrtTm": "0900",
+            "frSeatCnt": 1, "scnsEnm": "스트레스리스 시네마[CINE de CHEF]",
+        },
+    ]
+}
+
+
+def test_real_data_uses_title_not_format():
+    # 버그: movNm(제목) 대신 movFomNm(포맷 '2D')을 집었었다
+    shows = parsers.extract_showtimes_auto(REAL_CGV, "20260815")
+    assert shows[0].movie == "오디세이"
+    assert shows[0].movie != "IMAX LASER 2D"
+
+
+def test_real_data_keeps_after_midnight_time():
+    # 심야회차 25:00(새벽1시)이 잘리거나 깨지지 않아야
+    shows = parsers.extract_showtimes_auto(REAL_CGV, "20260815")
+    assert shows[1].start_time == "25:00"
+
+
+def test_real_data_grade_and_hall():
+    shows = parsers.extract_showtimes_auto(REAL_CGV, "20260815")
+    assert shows[0].grade == "03"
+    assert shows[0].hall == "IMAX관"
+
+
+def test_real_data_keys_unique_including_hall():
+    shows = parsers.extract_showtimes_auto(REAL_CGV, "20260815")
+    keys = [s.key for s in shows]
+    assert len(keys) == len(set(keys))  # 세 회차 모두 구분됨

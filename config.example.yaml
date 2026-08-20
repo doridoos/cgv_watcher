@@ -18,6 +18,8 @@ target:
   # days: 3                   # date_to 대신 일수로 지정할 수도 있음
   time_from: "10:30"          # 이 시각 이후에 시작하는 회차만
   time_to: "21:00"            # 이 시각 이전에 시작하는 회차만
+  # 심야회차 팁: CGV는 자정 넘는 회차를 24~29시로 표기(25:00 = 새벽 1시).
+  # 심야까지 보려면 time_to를 "29:59" 로.
 
 # ── 용도별 설정 요령 ─────────────────────────────────────────────
 # [취소표 감시] 위 예시처럼 보고 싶은 날짜(date_from/date_to)와 시간창을 좁게.
@@ -39,8 +41,10 @@ alert:
 
 # ── 폴링 주기 ────────────────────────────────────────────────────
 poll:
-  interval_sec: 300           # 평소 5분 (60초 미만은 거부됨 — 서버에 부담 주지 말 것)
-  burst_interval_sec: 120     # `cgv-watcher burst` 중에는 2분
+  # CGV는 비정상 접속을 감지해 IP를 차단한다("이용이 제한되었어요" 화면).
+  # 너무 잦은 조회는 위험 — 여유롭게 잡을 것. 아래는 안전한 기본값.
+  interval_sec: 600           # 평소 10분 (60초 미만은 거부됨)
+  burst_interval_sec: 180     # `cgv-watcher burst` 중에도 3분 이상 권장
   jitter_sec: 20              # 매 주기에 0~20초 무작위 지연
   timeout_sec: 15
   error_notify_after: 5       # 연속 실패 5회 도달 시 1회 경고 알림
@@ -90,15 +94,27 @@ endpoints:
     #   total: cpSeatCnt
     #   screening_id: scnSseq
 
-  # api 모드 예시 (state/session.json에서 확인한 실제 주소로 교체):
+  # api 모드 예시 (2026-08 국내 IP에서 실측된 실제 엔드포인트):
+  # 브라우저 없이 가벼우나, Cloudflare가 데이터센터/해외 IP는 막을 수 있음.
   # showtimes:
   #   mode: api
-  #   url: "https://cgv.co.kr/…searchMovScnInfo…"
+  #   url: "https://cgv.co.kr/api/v1/booking/searchMovScnInfo"
   #   method: GET
   #   params:
+  #     coCd: "A420"
   #     siteNo: "{theater_code}"
   #     scnYmd: "{date}"
-  #   list_path: auto
+  #     rtctlScopCd: "08"
+  #   list_path: "data"
+  #   fields:
+  #     date: scnYmd
+  #     start_time: scnsrtTm
+  #     movie: movNm          # 제목. movFomNm(=포맷 '2D','IMAX LASER 2D')이 아님!
+  #     hall: scnsEnm
+  #     remaining: frSeatCnt
+  #     total: cpSeatCnt
+  #     grade: tcscnsGradCd   # IMAX='03'
+  #     screening_id: scnSseq
 
   # 선택: 회차별 좌석 상세 (있어야 "새 좌석: E6", A~C열 필터가 동작.
   # 없으면 좌석 수 증가만으로 알림 — 그것만으로도 충분히 쓸 만하다)

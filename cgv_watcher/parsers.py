@@ -98,7 +98,8 @@ def _find_key(item: dict, patterns: list[str]) -> Optional[str]:
 # 순서 = 우선순위. 스키마가 바뀌어도 이름 관습이 비슷하면 잡아낸다.
 _K_START = [r"^scn?sr?t.*(tm|time)", r"start.*(tm|time)", r"^strt", r"play.*s.*t", r"^time$"]
 _K_DATE = [r"(scn|play|show).*(ymd|date|dt)", r"^ymd$", r"^date$"]
-_K_MOVIE = [r"mov.*(nm|name|title)", r"movie", r"^title$"]
+# 정확한 제목 키(movNm)를 최우선 — movFomNm(포맷명 '2D' 등)류 오인 방지
+_K_MOVIE = [r"^(expo)?movnm$", r"mov(?!fom|typ|kind|grad).*(nm|name|title)", r"movie", r"^title$"]
 _K_HALL = [r"scns.?e?nm", r"(scr|screen|theab|hall).*(nm|name)", r"^hall", r"screen"]
 _K_REMAIN = [r"(rest|remain|able|fr).*(seat|cnt)", r"seat.*(rest|remain|able|cnt)", r"^remain"]
 _K_TOTAL = [r"(tot|all|cp).*seat", r"seat.*tot"]

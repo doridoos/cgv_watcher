@@ -26,11 +26,12 @@ class Showtime:
     def key(self) -> str:
         """상태 파일에서 회차를 구분하는 키.
 
-        시작시간을 항상 포함한다 — CGV의 scnsNo는 '상영관' 번호라서
-        같은 관의 다른 회차끼리 충돌할 수 있기 때문.
+        시작시간과 상영관 이름을 항상 포함한다 — CGV의 scnsNo는 '상영관'
+        번호라서 같은 관의 다른 회차끼리, 그리고 본관/별관(CINE de CHEF 등)
+        사이에 번호가 겹칠 수 있기 때문.
         """
-        tail = self.screening_id or f"{self.hall}:{self.movie}"
-        return f"{self.date}:{self.start_time}:{tail}"
+        tail = self.screening_id or self.movie
+        return f"{self.date}:{self.start_time}:{self.hall}:{tail}"
 
 
 _SEAT_RE = re.compile(r"^([A-Za-z]+)\s*-?\s*(\d+)$")

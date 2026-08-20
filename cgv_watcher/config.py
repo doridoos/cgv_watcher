@@ -62,7 +62,9 @@ class TargetConfig:
     date_to: str = ""  # YYYYMMDD, 비우면 date_from + (days-1)
     days: int = 3
     time_from: str = "00:00"  # 회차 시작시간 창
-    time_to: str = "23:59"
+    # CGV는 자정 넘는 심야 회차를 24~29시로 표기(예: 25:00 = 새벽 1시).
+    # 기본 상한을 29:59로 둬야 심야 회차가 잘리지 않는다
+    time_to: str = "29:59"
 
     def dates(self) -> list[str]:
         start = (
@@ -111,8 +113,9 @@ class TelegramConfig:
 
 @dataclass
 class PollConfig:
-    interval_sec: int = 300  # 평소 5분
-    burst_interval_sec: int = 120  # 버스트 중 2분
+    # CGV는 과도한 조회를 감지해 IP를 차단하므로 여유롭게 잡는다
+    interval_sec: int = 600  # 평소 10분
+    burst_interval_sec: int = 180  # 버스트 중 3분
     jitter_sec: int = 20  # 서버 부담과 패턴 감지를 줄이기 위한 무작위 지연
     timeout_sec: int = 15
     error_notify_after: int = 5  # 연속 실패가 이 횟수에 도달하면 1회 경고 알림
