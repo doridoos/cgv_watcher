@@ -25,31 +25,45 @@ from .watcher import run_once
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cgv-watcher", description="CGV 표 감시기")
-    parser.add_argument("-c", "--config", default="config.yaml", help="설정 파일 경로")
-    parser.add_argument("-v", "--verbose", action="store_true")
+    # -c/-v를 서브커맨드 앞뒤 어디에 써도 되게 공통 파서로 공유
+    # (probe -v 처럼 뒤에 붙이는 게 자연스러우므로)
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument(
+        "-c", "--config", default=argparse.SUPPRESS, help="설정 파일 경로"
+    )
+    common.add_argument(
+        "-v", "--verbose", action="store_true", default=argparse.SUPPRESS
+    )
+
+    parser = argparse.ArgumentParser(
+        prog="cgv-watcher", description="CGV 표 감시기", parents=[common]
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("watch", help="폴링 루프 시작")
-    sub.add_parser("bot", help="텔레그램 대화형 봇 (버튼 메뉴로 설정·시작·중지)")
-    p_once = sub.add_parser("once", help="1회 조회 (cron에서 사용)")
+    sub.add_parser("watch", help="폴링 루프 시작", parents=[common])
+    sub.add_parser(
+        "bot", help="텔레그램 대화형 봇 (버튼 메뉴로 설정·시작·중지)", parents=[common]
+    )
+    p_once = sub.add_parser("once", help="1회 조회 (cron에서 사용)", parents=[common])
     p_once.add_argument("--dry-run", action="store_true", help="알림을 보내지 않음")
-    p_probe = sub.add_parser("probe", help="엔드포인트 진단")
+    p_probe = sub.add_parser("probe", help="엔드포인트 진단", parents=[common])
     p_probe.add_argument("--date", default=None, help="YYYYMMDD (기본: 감시 첫 날짜)")
     p_probe.add_argument("--raw", action="store_true", help="원본 응답 전체 출력")
-    p_burst = sub.add_parser("burst", help="일시적으로 짧은 주기로 전환")
+    p_burst = sub.add_parser("burst", help="일시적으로 짧은 주기로 전환", parents=[common])
     p_burst.add_argument("-m", "--minutes", type=int, default=20)
     p_burst.add_argument("-i", "--interval", type=int, default=None, help="버스트 간격(초)")
-    sub.add_parser("test-telegram", help="텔레그램 테스트 메시지 전송")
+    sub.add_parser("test-telegram", help="텔레그램 테스트 메시지 전송", parents=[common])
 
     args = parser.parse_args(argv)
+    config_path = getattr(args, "config", "config.yaml")
+    verbose = getattr(args, "verbose", False)
     logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
+        level=logging.DEBUG if verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
     try:
-        cfg = load_config(args.config)
+        cfg = load_config(config_path)
     except ConfigError as e:
         print(f"설정 오류: {e}", file=sys.stderr)
         return 2
@@ -65,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
         from .telegram_bot import run_bot
 
         try:
-            run_bot(args.config)
+            run_bot(config_path)
         except KeyboardInterrupt:
             print("\n봇 종료")
         except ConfigError as e:

@@ -149,7 +149,8 @@ if .venv/bin/python -m cgv_watcher probe; then
 else
   echo
   echo "⚠️  CGV 조회 실패. 미국 리전 IP를 CGV/Cloudflare가 막았을 가능성이 큽니다."
-  echo "   - 재시도: cd $APP_DIR && .venv/bin/python -m cgv_watcher probe -v"
+  echo "   - 자세한 원인 보기: cd $APP_DIR && .venv/bin/python -m cgv_watcher probe -v"
+  echo "     (코드가 예전 버전이면 먼저: git -C $APP_DIR pull)"
   echo "   - 해결책: 서울 리전(asia-northeast3) VM으로 이전하거나,"
   echo "             서울 리전이 있는 무료 대안(예: Oracle Cloud Free Tier 춘천/서울)을 고려하세요."
   echo "   봇 서비스 자체는 켜져 있으므로, 텔레그램 /start 와 상태 버튼은 동작합니다."
