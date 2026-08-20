@@ -194,6 +194,8 @@ class CgvClient:
             date=date,
             timeout_sec=max(self.cfg.poll.timeout_sec, 30),
             browser_args=self.cfg.browser_args,
+            user_agent=self.cfg.user_agent,
+            debug_dir=self.cfg.state_dir,
         )
         if new_session is not None:
             self._save_session(new_session)

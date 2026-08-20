@@ -139,3 +139,13 @@ def test_watch_toggle(tmp_path, monkeypatch):
                             "message": {"chat": {"id": 111}}}}
     )
     assert not bot._watch_enabled()
+
+
+# ------------------------------------------------- Cloudflare 차단 판별
+
+def test_cloudflare_detection():
+    from cgv_watcher.browser_fetch import looks_like_cloudflare_block
+
+    assert looks_like_cloudflare_block("Just a moment...", "<html>")
+    assert looks_like_cloudflare_block("", "<div class=cf-chl-widget>")
+    assert not looks_like_cloudflare_block("CGV 예매", "<html>정상 페이지</html>")
