@@ -25,7 +25,15 @@ set -euo pipefail
 
 BRANCH="${CGV_BRANCH:-claude/cgv-ticket-monitor-57h7t0}"
 REPO="${CGV_REPO:-https://github.com/doridoos/cgv_watcher.git}"
-APP_DIR="${CGV_DIR:-$HOME/cgv_watcher}"
+
+# 이미 클론된 저장소 안에서 `bash deploy/setup_gcp.sh` 로 실행했다면
+# 그 클론을 그대로 설치 위치로 쓴다 (비공개 저장소 대응).
+if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]:-}" ] \
+   && [ -d "$(dirname "${BASH_SOURCE[0]}")/../.git" ]; then
+  APP_DIR="${CGV_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+else
+  APP_DIR="${CGV_DIR:-$HOME/cgv_watcher}"
+fi
 
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$*"; }
 
@@ -57,11 +65,15 @@ if [ "$((mem_kb + swap_kb))" -lt 1500000 ]; then
   echo "  ⚠️ 램+스왑이 1.5GB 미만이라 Chromium 실행이 빠듯할 수 있습니다."
 fi
 
-log "3/6 코드 받기 ($BRANCH)"
+log "3/6 코드 받기 ($BRANCH) → $APP_DIR"
 if [ -d "$APP_DIR/.git" ]; then
-  git -C "$APP_DIR" fetch origin "$BRANCH"
-  git -C "$APP_DIR" checkout "$BRANCH"
-  git -C "$APP_DIR" pull --ff-only origin "$BRANCH"
+  # 비공개 저장소라 인증이 없으면 원격 갱신이 실패할 수 있다 — 치명적 아님
+  if git -C "$APP_DIR" fetch origin "$BRANCH" 2>/dev/null; then
+    git -C "$APP_DIR" checkout "$BRANCH"
+    git -C "$APP_DIR" pull --ff-only origin "$BRANCH"
+  else
+    echo "  원격 갱신 실패(인증 필요?) — 현재 코드를 그대로 사용합니다"
+  fi
 else
   git clone -b "$BRANCH" "$REPO" "$APP_DIR"
 fi
